@@ -261,7 +261,7 @@ def backtest(backtest_config: dict, parallel_mode: bool = False, with_simulator:
     stock_pool = order_df["instrument"].unique().tolist()
     stock_pool.sort()
 
-    stock_pool = stock_pool[:1]
+    stock_pool = stock_pool
 
     single = single_with_simulator if with_simulator else single_with_collect_data_loop
     if parallel_mode:
