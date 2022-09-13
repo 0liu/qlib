@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 from __future__ import annotations
 
+import argparse
 import copy
 import pickle
 import sys
@@ -14,12 +15,13 @@ import torch
 from joblib import Parallel, delayed
 
 from qlib.backtest import collect_data_loop, get_strategy_executor
-from qlib.backtest.decision import TradeRangeByTime
+from qlib.backtest.decision import Order, OrderDir, TradeRangeByTime
 from qlib.backtest.executor import BaseExecutor, NestedExecutor, SimulatorExecutor
 from qlib.backtest.high_performance_ds import BaseOrderIndicator
 from qlib.rl.contrib.naive_config_parser import get_backtest_config_fromfile
 from qlib.rl.contrib.utils import read_order_file
 from qlib.rl.data.integration import init_qlib
+from qlib.rl.order_execution.simulator_qlib import SingleAssetOrderExecution
 from qlib.rl.utils.env_wrapper import CollectDataEnvWrapper
 
 
@@ -109,7 +111,73 @@ def _generate_report(decisions: list, report_dict: dict) -> dict:
     return report
 
 
-def single(
+def single_with_simulator(
+    backtest_config: dict,
+    orders: pd.DataFrame,
+    split: str = "stock",
+    cash_limit: float = None,
+    generate_report: bool = False,
+) -> Union[Tuple[pd.DataFrame, dict], pd.DataFrame]:
+    if split == "stock":
+        stock_id = orders.iloc[0].instrument
+        init_qlib(backtest_config["qlib"], part=stock_id)
+    else:
+        day = orders.iloc[0].datetime
+        init_qlib(backtest_config["qlib"], part=day)
+
+    stocks = orders.instrument.unique().tolist()
+
+    reports = []
+    decisions = []
+    for _, row in orders.iterrows():
+        date = pd.Timestamp(row["datetime"])
+        start_time = pd.Timestamp(backtest_config["start_time"]).replace(year=date.year, month=date.month, day=date.day)
+        end_time = pd.Timestamp(backtest_config["end_time"]).replace(year=date.year, month=date.month, day=date.day)
+        order = Order(
+            stock_id=row["instrument"],
+            amount=row["amount"],
+            direction=OrderDir(row["direction"]),
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        executor_config = _get_multi_level_executor_config(
+            strategy_config=backtest_config["strategies"],
+            cash_limit=cash_limit,
+            generate_report=generate_report,
+        )
+
+        exchange_config = copy.deepcopy(backtest_config["exchange"])
+        exchange_config.update(
+            {
+                "codes": stocks,
+                "freq": "1min",
+            }
+        )
+
+        simulator = SingleAssetOrderExecution(
+            order=order,
+            executor_config=executor_config,
+            exchange_config=exchange_config,
+            qlib_config=None,
+            cash_limit=None,
+            backtest_mode=True,
+        )
+
+        reports.append(simulator.report_dict)
+        decisions += simulator.decisions
+
+    indicator = {k: v for report in reports for k, v in report["indicator"]["1day_obj"].order_indicator_his.items()}
+    records = _convert_indicator_to_dataframe(indicator)
+    assert records is None or not np.isnan(records["ffr"]).any()
+
+    if generate_report:
+        return records, None  # TODO: To be implemented
+    else:
+        return records
+
+
+def single_with_collect_data_loop(
     backtest_config: dict,
     orders: pd.DataFrame,
     split: str = "stock",
@@ -127,7 +195,7 @@ def single(
     trade_end_time = orders["datetime"].max()
     stocks = orders.instrument.unique().tolist()
 
-    top_strategy_config = {
+    strategy_config = {
         "class": "FileOrderStrategy",
         "module_path": "qlib.contrib.strategy.rule_strategy",
         "kwargs": {
@@ -139,14 +207,14 @@ def single(
         },
     }
 
-    top_executor_config = _get_multi_level_executor_config(
+    executor_config = _get_multi_level_executor_config(
         strategy_config=backtest_config["strategies"],
         cash_limit=cash_limit,
         generate_report=generate_report,
     )
 
-    tmp_backtest_config = copy.deepcopy(backtest_config["exchange"])
-    tmp_backtest_config.update(
+    exchange_config = copy.deepcopy(backtest_config["exchange"])
+    exchange_config.update(
         {
             "codes": stocks,
             "freq": "1min",
@@ -156,11 +224,11 @@ def single(
     strategy, executor = get_strategy_executor(
         start_time=pd.Timestamp(trade_start_time),
         end_time=pd.Timestamp(trade_end_time) + pd.DateOffset(1),
-        strategy=top_strategy_config,
-        executor=top_executor_config,
+        strategy=strategy_config,
+        executor=executor_config,
         benchmark=None,
         account=cash_limit if cash_limit is not None else int(1e12),
-        exchange_kwargs=tmp_backtest_config,
+        exchange_kwargs=exchange_config,
         pos_type="Position" if cash_limit is not None else "InfPosition",
     )
     _set_env_for_all_strategy(executor=executor)
@@ -184,7 +252,7 @@ def single(
         return records
 
 
-def backtest(backtest_config: dict) -> pd.DataFrame:
+def backtest(backtest_config: dict, parallel_mode: bool = False, with_simulator: bool = False) -> pd.DataFrame:
     order_df = read_order_file(backtest_config["order_file"])
 
     cash_limit = backtest_config["exchange"].pop("cash_limit")
@@ -193,18 +261,32 @@ def backtest(backtest_config: dict) -> pd.DataFrame:
     stock_pool = order_df["instrument"].unique().tolist()
     stock_pool.sort()
 
-    mp_config = {"n_jobs": backtest_config["concurrency"], "verbose": 10, "backend": "multiprocessing"}
-    torch.set_num_threads(1)  # https://github.com/pytorch/pytorch/issues/17199
-    res = Parallel(**mp_config)(
-        delayed(single)(
-            backtest_config=backtest_config,
-            orders=order_df[order_df["instrument"] == stock].copy(),
-            split="stock",
-            cash_limit=cash_limit,
-            generate_report=generate_report,
+    stock_pool = stock_pool[:1]
+
+    single = single_with_simulator if with_simulator else single_with_collect_data_loop
+    if parallel_mode:
+        mp_config = {"n_jobs": backtest_config["concurrency"], "verbose": 10, "backend": "multiprocessing"}
+        torch.set_num_threads(1)  # https://github.com/pytorch/pytorch/issues/17199
+        res = Parallel(**mp_config)(
+            delayed(single)(
+                backtest_config=backtest_config,
+                orders=order_df[order_df["instrument"] == stock].copy(),
+                split="stock",
+                cash_limit=cash_limit,
+                generate_report=generate_report,
+            )
+            for stock in stock_pool
         )
-        for stock in stock_pool
-    )
+    else:
+        res = [
+            single(
+                backtest_config=backtest_config,
+                orders=order_df[order_df["instrument"] == stock].copy(),
+                split="stock",
+                cash_limit=cash_limit,
+                generate_report=generate_report,
+            ) for stock in stock_pool
+        ]
 
     output_path = Path(backtest_config["output_dir"])
     if generate_report:
@@ -227,5 +309,14 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-    path = sys.argv[1]
-    backtest(get_backtest_config_fromfile(path))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_path", type=str, required=True, help="Path to the config file")
+    parser.add_argument("--parallel", action="store_true", help="Whether to run pipelines in parallel")
+    parser.add_argument("--use_simulator", action="store_true", help="Whether to use simulator as the backend")
+    args = parser.parse_args()
+
+    backtest(
+        backtest_config=get_backtest_config_fromfile(args.config_path),
+        parallel_mode=args.parallel,
+        with_simulator=args.use_simulator,
+    )
