@@ -4,16 +4,15 @@
 from __future__ import annotations
 
 import collections
-from abc import ABCMeta
 from types import GeneratorType
-from typing import Any, cast, Dict, Generator, List, Optional, Union
+from typing import Any, cast, Dict, Generator, Optional, Union
 
 import pandas as pd
 import torch
 from tianshou.data import Batch
 from tianshou.policy import BasePolicy
 
-from qlib.backtest import CommonInfrastructure, Exchange, Order
+from qlib.backtest import CommonInfrastructure, Order
 from qlib.backtest.decision import BaseTradeDecision, TradeDecisionWO, TradeRange
 from qlib.backtest.utils import LevelInfrastructure
 from qlib.constant import ONE_MIN
@@ -21,7 +20,7 @@ from qlib.rl.data.native import load_backtest_data
 from qlib.rl.interpreter import ActionInterpreter, StateInterpreter
 from qlib.rl.order_execution.state import SAOEState, SAOEStateAdapter
 from qlib.rl.utils.env_wrapper import BaseEnvWrapper
-from qlib.strategy.base import BaseStrategy, RLStrategy
+from qlib.strategy.base import RLStrategy
 from qlib.utils import init_instance_by_config
 
 
@@ -263,79 +262,3 @@ class SAOEIntStrategy(SAOEStrategy):
                 order_list.append(oh.create(order.stock_id, exec_vol, order.direction))
 
         return TradeDecisionWO(order_list=order_list, strategy=self)
-
-
-class MultiplexStrategyBase(BaseStrategy, metaclass=ABCMeta):
-    def __init__(
-        self,
-        strategies: List[BaseStrategy] | List[dict],
-        outer_trade_decision: BaseTradeDecision = None,
-        level_infra: LevelInfrastructure = None,
-        common_infra: CommonInfrastructure = None,
-        trade_exchange: Exchange = None,
-    ) -> None:
-        super().__init__(
-            outer_trade_decision=outer_trade_decision,
-            level_infra=level_infra,
-            common_infra=common_infra,
-            trade_exchange=trade_exchange,
-        )
-
-        self._strategies = [init_instance_by_config(strategy, accept_types=BaseStrategy) for strategy in strategies]
-
-    def set_env(self, env: BaseEnvWrapper) -> None:
-        for strategy in self._strategies:
-            if hasattr(strategy, "set_env"):
-                strategy.set_env(env)
-
-
-class MultiplexStrategyOnTradeStep(MultiplexStrategyBase):
-    """To use different strategy on different step of the outer calendar"""
-
-    def __init__(
-        self,
-        strategies: List[BaseStrategy] | List[dict],
-        outer_trade_decision: BaseTradeDecision = None,
-        level_infra: LevelInfrastructure = None,
-        common_infra: CommonInfrastructure = None,
-        trade_exchange: Exchange = None,
-    ) -> None:
-        super(MultiplexStrategyOnTradeStep, self).__init__(
-            strategies=strategies,
-            outer_trade_decision=outer_trade_decision,
-            level_infra=level_infra,
-            common_infra=common_infra,
-            trade_exchange=trade_exchange,
-        )
-
-    def reset_level_infra(self, level_infra: LevelInfrastructure) -> None:
-        for strategy in self._strategies:
-            strategy.reset_level_infra(level_infra)
-
-    def reset_common_infra(self, common_infra: CommonInfrastructure) -> None:
-        for strategy in self._strategies:
-            strategy.reset_common_infra(common_infra)
-
-    def reset(self, outer_trade_decision: BaseTradeDecision = None, **kwargs: Any) -> None:
-        super().reset(outer_trade_decision=outer_trade_decision, **kwargs)
-
-        if outer_trade_decision is not None:
-            strategy = self._get_current_strategy()
-            strategy.reset(outer_trade_decision=outer_trade_decision, **kwargs)
-
-    def generate_trade_decision(self, execute_result: list = None) -> BaseTradeDecision:
-        if self.outer_trade_decision is not None:
-            strategy = self._get_current_strategy()
-            return strategy.generate_trade_decision(execute_result=execute_result)
-        else:
-            return TradeDecisionWO([], self)
-
-    def post_exe_step(self, execute_result: list) -> None:
-        if self.outer_trade_decision is not None:
-            strategy = self._get_current_strategy()
-            if isinstance(strategy, RLStrategy):
-                strategy.post_exe_step(execute_result=execute_result)
-
-    def _get_current_strategy(self) -> BaseStrategy:
-        outer_calendar = self.outer_trade_decision.strategy.trade_calendar
-        return self._strategies[outer_calendar.get_trade_step()]
