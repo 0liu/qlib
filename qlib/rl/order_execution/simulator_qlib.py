@@ -9,7 +9,7 @@ import pandas as pd
 
 from qlib.backtest import collect_data_loop, get_strategy_executor
 from qlib.backtest.decision import BaseTradeDecision, Order, TradeRangeByTime
-from qlib.backtest.executor import NestedExecutor
+from qlib.backtest.executor import BaseExecutor, NestedExecutor
 from qlib.rl.data.integration import init_qlib
 from qlib.rl.simulator import Simulator
 from .state import SAOEState, SAOEStateAdapter
@@ -87,7 +87,7 @@ class SingleAssetOrderExecution(Simulator[Order, SAOEState, float]):
 
         assert isinstance(self._executor, NestedExecutor)
 
-        self.report_dict = {}
+        self.report_dict: dict = {}
         self.decisions: List[BaseTradeDecision] = []
         self._collect_data_loop = collect_data_loop(
             start_time=order.date,
@@ -99,7 +99,7 @@ class SingleAssetOrderExecution(Simulator[Order, SAOEState, float]):
         assert isinstance(self._collect_data_loop, Generator)
 
         if backtest_mode:
-            executor = self._executor
+            executor: BaseExecutor = self._executor
             while isinstance(executor, NestedExecutor):
                 if hasattr(executor.inner_strategy, "set_env"):
                     executor.inner_strategy.set_env(CollectDataEnvWrapper())

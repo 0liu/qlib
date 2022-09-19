@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import copy
 import pickle
-import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -110,9 +109,7 @@ def _generate_report(decisions: list, report_dicts: List[dict]) -> dict:
             continue
 
         report[key] = pd.concat(indicator_dict[key])
-        report[key + '_obj'] = pd.concat(
-            [_convert_indicator_to_dataframe(his) for his in indicator_his[key + '_obj']]
-        )
+        report[key + "_obj"] = pd.concat([_convert_indicator_to_dataframe(his) for his in indicator_his[key + "_obj"]])
 
         cur_details = decision_details[decision_details.freq == key].set_index(["instrument", "datetime"])
         if len(cur_details) > 0:
@@ -305,7 +302,8 @@ def backtest(backtest_config: dict, parallel_mode: bool = False, with_simulator:
                 split="stock",
                 cash_limit=cash_limit,
                 generate_report=generate_report,
-            ) for stock in stock_pool
+            )
+            for stock in stock_pool
         ]
 
     output_path = Path(backtest_config["output_dir"])

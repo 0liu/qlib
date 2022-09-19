@@ -241,14 +241,16 @@ class SAOEIntStrategy(SAOEStrategy):
 
         trade_details = []
         for a, v, o in zip(act, exec_vols, getattr(self.outer_trade_decision, "order_list")):
-            trade_details.append({
-                'instrument': o.stock_id,
-                'datetime': self.trade_calendar.get_step_time()[0],
-                'freq': self.trade_calendar.get_freq(),
-                'rl_exec_vol': v
-            })
+            trade_details.append(
+                {
+                    "instrument": o.stock_id,
+                    "datetime": self.trade_calendar.get_step_time()[0],
+                    "freq": self.trade_calendar.get_freq(),
+                    "rl_exec_vol": v,
+                }
+            )
             if a is not None:
-                trade_details[-1]['rl_action'] = a
+                trade_details[-1]["rl_action"] = a
         return pd.DataFrame.from_records(trade_details)
 
     def _generate_trade_decision(self, execute_result: list = None) -> BaseTradeDecision:
