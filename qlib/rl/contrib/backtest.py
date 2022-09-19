@@ -6,8 +6,9 @@ import argparse
 import copy
 import pickle
 import sys
+from collections import defaultdict
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -92,22 +93,32 @@ def _convert_indicator_to_dataframe(indicator: dict) -> Optional[pd.DataFrame]:
     return records
 
 
-def _generate_report(decisions: list, report_dict: dict) -> dict:
+def _generate_report(decisions: list, report_dicts: List[dict]) -> dict:
+    indicator_dict = defaultdict(list)
+    indicator_his = defaultdict(list)
+    for report_dict in report_dicts:
+        for key, value in report_dict["indicator"].items():
+            if key.endswith("_obj"):
+                indicator_his[key].append(value.order_indicator_his)
+            else:
+                indicator_dict[key].append(value)
+
     report = {}
     decision_details = pd.concat([d.details for d in decisions if hasattr(d, "details")])
-    for key in ["1minute", "5minute", "30minute", "1day"]:
-        if key not in report_dict["indicator"]:
+    for key in ["1min", "5min", "30min", "1day"]:
+        if key not in indicator_dict:
             continue
-        report[key] = report_dict["indicator"][key]
-        report[key + "_obj"] = _convert_indicator_to_dataframe(
-            report_dict["indicator"][key + "_obj"].order_indicator_his
+
+        report[key] = pd.concat(indicator_dict[key])
+        report[key + '_obj'] = pd.concat(
+            [_convert_indicator_to_dataframe(his) for his in indicator_his[key + '_obj']]
         )
-        cur_details = decision_details[decision_details.freq == key.rstrip("ute")].set_index(["instrument", "datetime"])
+
+        cur_details = decision_details[decision_details.freq == key].set_index(["instrument", "datetime"])
         if len(cur_details) > 0:
             cur_details.pop("freq")
             report[key + "_obj"] = report[key + "_obj"].join(cur_details, how="outer")
-    if "1minute" in report_dict["report"]:
-        report["simulator"] = report_dict["report"]["1minute"][0]
+
     return report
 
 
@@ -172,7 +183,16 @@ def single_with_simulator(
     assert records is None or not np.isnan(records["ffr"]).any()
 
     if generate_report:
-        return records, None  # TODO: To be implemented
+        report = _generate_report(decisions, reports)
+
+        if split == "stock":
+            stock_id = orders.iloc[0].instrument
+            report = {stock_id: report}
+        else:
+            day = orders.iloc[0].datetime
+            report = {day: report}
+
+        return records, report
     else:
         return records
 
@@ -240,7 +260,7 @@ def single_with_collect_data_loop(
     assert records is None or not np.isnan(records["ffr"]).any()
 
     if generate_report:
-        report = _generate_report(decisions, report_dict)
+        report = _generate_report(decisions, [report_dict])
         if split == "stock":
             stock_id = orders.iloc[0].instrument
             report = {stock_id: report}
