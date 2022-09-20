@@ -159,7 +159,6 @@ def main(config: dict) -> None:
         seed_everything(config["runtime"]["seed"])
 
     state_config = config["state_interpreter"]
-    state_config["kwargs"]["data_dir"] = Path(config["data"]["source"]["proc_data_dir"])
     state_interpreter: StateInterpreter = init_instance_by_config(state_config)
 
     action_interpreter: ActionInterpreter = init_instance_by_config(config["action_interpreter"])
