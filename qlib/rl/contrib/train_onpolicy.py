@@ -1,6 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
-
+import argparse
 import os
 import random
 import sys
@@ -203,7 +203,10 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-    path = sys.argv[1]
-    config = yaml.safe_load(open(path, "r"))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_path", type=str, required=True, help="Path to the config file")
+    args = parser.parse_args()
+
+    config = yaml.safe_load(open(args.config_path, "r"))
 
     main(config)
