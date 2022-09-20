@@ -129,8 +129,8 @@ def train_and_test(
         "finite_env_type": env_config["parallel_mode"],
         "concurrency": env_config["concurrency"],
         "val_every_n_iters": trainer_config.get("val_every_n_epoch", None),
-        # "callbacks": [
-        #     Checkpoint(dirpath=Path("C:/Users/huoranli/Downloads/tmp/"), every_n_iters=1),
+        # "callbacks": [  # TODO: add this
+        #     Checkpoint(dirpath=Path(""), every_n_iters=1),
         # ],
     }
     vessel_kwargs = {
@@ -181,7 +181,7 @@ def main(config: dict) -> None:
     )
     policy: BasePolicy = init_instance_by_config(config["policy"])
 
-    # use_cuda = config["runtime"].get("use_cuda", False)
+    # use_cuda = config["runtime"].get("use_cuda", False)  # TODO: restore this
     # if use_cuda:
     #     policy.cuda()
 
