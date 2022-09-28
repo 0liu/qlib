@@ -18,7 +18,7 @@ from qlib.rl.data.pickle_styled import load_simple_intraday_backtest_data
 from qlib.rl.interpreter import ActionInterpreter, StateInterpreter
 from qlib.rl.order_execution import SingleAssetOrderExecutionSimple
 from qlib.rl.reward import Reward
-from qlib.rl.trainer import train
+from qlib.rl.trainer import Checkpoint, train
 from qlib.utils import init_instance_by_config
 from tianshou.policy import BasePolicy
 from torch import nn
@@ -66,7 +66,7 @@ class LazyLoadDataset(Dataset):
 
     def __getitem__(self, index: int) -> Order:
         row = self._order_df.iloc[index]
-        date = pd.Timestamp(row["date"])
+        date = pd.Timestamp(str(row["date"]))
 
         if self._ticks_index is None:
             # TODO: We only load ticks index once based on the assumption that ticks index of different dates
@@ -124,14 +124,21 @@ def train_and_test(
         default_end_time_index=data_config["source"]["default_end_time"],
     )
 
+    callbacks = []
+    if "checkpoint_path" in trainer_config:
+        callbacks.append(
+            Checkpoint(
+                dirpath=Path(trainer_config["checkpoint_path"]),
+                every_n_iters=trainer_config["checkpoint_every_n_iters"],
+            ),
+        )
+
     trainer_kwargs = {
         "max_iters": trainer_config["max_epoch"],
         "finite_env_type": env_config["parallel_mode"],
         "concurrency": env_config["concurrency"],
         "val_every_n_iters": trainer_config.get("val_every_n_epoch", None),
-        # "callbacks": [  # TODO: add this
-        #     Checkpoint(dirpath=Path(""), every_n_iters=1),
-        # ],
+        "callbacks": callbacks
     }
     vessel_kwargs = {
         "episode_per_iter": trainer_config["episode_per_collect"],
@@ -180,9 +187,9 @@ def main(config: dict) -> None:
     )
     policy: BasePolicy = init_instance_by_config(config["policy"])
 
-    # use_cuda = config["runtime"].get("use_cuda", False)  # TODO: restore this
-    # if use_cuda:
-    #     policy.cuda()
+    use_cuda = config["runtime"].get("use_cuda", False)
+    if use_cuda:
+        policy.cuda()
 
     train_and_test(
         env_config=config["env"],
