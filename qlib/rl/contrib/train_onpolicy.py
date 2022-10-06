@@ -3,7 +3,6 @@
 import argparse
 import os
 import random
-import sys
 from pathlib import Path
 from typing import cast, List, Optional
 
@@ -75,7 +74,7 @@ class LazyLoadDataset(Dataset):
             backtest_data = load_simple_intraday_backtest_data(
                 data_dir=self._data_dir,
                 stock_id=row["instrument"],
-                date=date
+                date=date,
             )
             self._ticks_index = [t - date for t in backtest_data.get_time_index()]
 
@@ -84,7 +83,7 @@ class LazyLoadDataset(Dataset):
             amount=row["amount"],
             direction=OrderDir(int(row["order_type"])),
             start_time=date + self._ticks_index[self._default_start_time_index],
-            end_time=date + self._ticks_index[self._default_end_time_index - 1] + ONE_MIN
+            end_time=date + self._ticks_index[self._default_end_time_index - 1] + ONE_MIN,
         )
 
         return order
@@ -138,7 +137,7 @@ def train_and_test(
         "finite_env_type": env_config["parallel_mode"],
         "concurrency": env_config["concurrency"],
         "val_every_n_iters": trainer_config.get("val_every_n_epoch", None),
-        "callbacks": callbacks
+        "callbacks": callbacks,
     }
     vessel_kwargs = {
         "episode_per_iter": trainer_config["episode_per_collect"],
@@ -213,6 +212,7 @@ if __name__ == "__main__":
     parser.add_argument("--config_path", type=str, required=True, help="Path to the config file")
     args = parser.parse_args()
 
-    config = yaml.safe_load(open(args.config_path, "r"))
+    with open(args.config_path, "r") as input_stream:
+        config = yaml.safe_load(input_stream)
 
     main(config)

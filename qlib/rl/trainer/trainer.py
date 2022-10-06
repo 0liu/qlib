@@ -332,10 +332,10 @@ def _wrap_context(obj):
 def _named_collection(seq: Sequence[T]) -> Dict[str, T]:
     """Convert a list into a dict, where each item is named with its type."""
     res = {}
-    retry_cnt = collections.Counter()
+    retry_cnt: collections.Counter = collections.Counter()
     for item in seq:
         typename = type(item).__name__.lower()
-        key = typename if retry_cnt[typename] == 0 else f'{typename}{retry_cnt[typename]}'
+        key = typename if retry_cnt[typename] == 0 else f"{typename}{retry_cnt[typename]}"
         retry_cnt[typename] += 1
         res[key] = item
     return res
