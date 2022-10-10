@@ -11,11 +11,14 @@ from importlib import import_module
 import yaml
 
 
+DELETE_KEY = "_delete_"
+
+
 def merge_a_into_b(a: dict, b: dict) -> dict:
     b = b.copy()
     for k, v in a.items():
         if isinstance(v, dict) and k in b:
-            v.pop("_delete_", False)  # TODO: make this more elegant
+            v.pop(DELETE_KEY, False)
             b[k] = merge_a_into_b(v, b[k])
         else:
             b[k] = v

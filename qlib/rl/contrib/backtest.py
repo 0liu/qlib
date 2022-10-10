@@ -12,17 +12,16 @@ from typing import List, Literal, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 import torch
-from joblib import Parallel, delayed
+from joblib import delayed, Parallel
 
 from qlib.backtest import collect_data_loop, get_strategy_executor
 from qlib.backtest.decision import BaseTradeDecision, Order, OrderDir, TradeRangeByTime
-from qlib.backtest.executor import BaseExecutor, NestedExecutor, SimulatorExecutor
+from qlib.backtest.executor import SimulatorExecutor
 from qlib.backtest.high_performance_ds import BaseOrderIndicator
 from qlib.rl.contrib.naive_config_parser import get_backtest_config_fromfile
 from qlib.rl.contrib.utils import read_order_file
 from qlib.rl.data.integration import init_qlib
 from qlib.rl.order_execution.simulator_qlib import SingleAssetOrderExecution
-from qlib.rl.utils.env_wrapper import CollectDataEnvWrapper
 
 
 def _get_multi_level_executor_config(
@@ -57,15 +56,6 @@ def _get_multi_level_executor_config(
         }
 
     return executor_config
-
-
-def _set_env_for_all_strategy(executor: BaseExecutor) -> None:
-    if isinstance(executor, NestedExecutor):
-        if hasattr(executor.inner_strategy, "set_env"):
-            env = CollectDataEnvWrapper()
-            env.reset()
-            executor.inner_strategy.set_env(env)
-        _set_env_for_all_strategy(executor.inner_executor)
 
 
 def _convert_indicator_to_dataframe(indicator: dict) -> Optional[pd.DataFrame]:
@@ -207,7 +197,6 @@ def single_with_simulator(
             exchange_config=exchange_config,
             qlib_config=None,
             cash_limit=None,
-            backtest_mode=True,
         )
 
         reports.append(simulator.report_dict)
@@ -310,7 +299,6 @@ def single_with_collect_data_loop(
         exchange_kwargs=exchange_config,
         pos_type="Position" if cash_limit is not None else "InfPosition",
     )
-    _set_env_for_all_strategy(executor=executor)
 
     report_dict: dict = {}
     decisions = list(collect_data_loop(trade_start_time, trade_end_time, strategy, executor, report_dict))

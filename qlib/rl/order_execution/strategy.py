@@ -20,7 +20,6 @@ from qlib.constant import ONE_MIN
 from qlib.rl.data.native import load_backtest_data
 from qlib.rl.interpreter import ActionInterpreter, StateInterpreter
 from qlib.rl.order_execution.state import SAOEState, SAOEStateAdapter
-from qlib.rl.utils.env_wrapper import BaseEnvWrapper
 from qlib.strategy.base import RLStrategy
 from qlib.utils import init_instance_by_config
 
@@ -170,7 +169,6 @@ class SAOEIntStrategy(SAOEStrategy):
         outer_trade_decision: BaseTradeDecision = None,
         level_infra: LevelInfrastructure = None,
         common_infra: CommonInfrastructure = None,
-        backtest: bool = False,
         **kwargs: Any,
     ) -> None:
         super(SAOEIntStrategy, self).__init__(
@@ -180,8 +178,6 @@ class SAOEIntStrategy(SAOEStrategy):
             common_infra=common_infra,
             **kwargs,
         )
-
-        self._backtest = backtest
 
         self._state_interpreter: StateInterpreter = init_instance_by_config(
             state_interpreter,
@@ -221,20 +217,11 @@ class SAOEIntStrategy(SAOEStrategy):
         if self._policy is not None:
             self._policy.eval()
 
-    def set_env(self, env: BaseEnvWrapper) -> None:
-        # TODO: This method is used to set EnvWrapper for interpreters since they rely on EnvWrapper.
-        # We should decompose the interpreters with EnvWrapper in the future and we should remove this method
-        # after that.
-
-        self._env = env
-        self._state_interpreter.env = self._action_interpreter.env = self._env
-
     def reset(self, outer_trade_decision: BaseTradeDecision = None, **kwargs: Any) -> None:
         super().reset(outer_trade_decision=outer_trade_decision, **kwargs)
 
-        # In backtest, env.reset() needs to be manually called since there is no outer trainer to call it
-        if self._backtest:
-            self._env.reset()
+        self._state_interpreter.reset()
+        self._action_interpreter.reset()
 
     def _generate_trade_details(self, act: np.ndarray, exec_vols: List[float]) -> pd.DataFrame:
         assert hasattr(self.outer_trade_decision, "order_list")
@@ -268,9 +255,8 @@ class SAOEIntStrategy(SAOEStrategy):
         act = policy_out.act.numpy() if torch.is_tensor(policy_out.act) else policy_out.act
         exec_vols = [self._action_interpreter.interpret(s, a) for s, a in zip(states, act)]
 
-        # In backtest, env.step() needs to be manually called since there is no outer trainer to call it
-        if self._backtest:
-            self._env.step(None)
+        self._state_interpreter.step()
+        self._action_interpreter.step()
 
         oh = self.trade_exchange.get_order_helper()
         order_list = []
