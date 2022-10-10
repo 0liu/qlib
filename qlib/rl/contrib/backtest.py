@@ -109,15 +109,14 @@ def _generate_report(
     report = {}
     decision_details = pd.concat([getattr(d, "details") for d in decisions if hasattr(d, "details")])
     for key in indicator_dict:
-        report[key] = (
-            pd.concat(indicator_dict[key]),
-            pd.concat([_convert_indicator_to_dataframe(his) for his in indicator_his[key]]),
-        )
-
+        cur_dict = pd.concat(indicator_dict[key])
+        cur_his = pd.concat([_convert_indicator_to_dataframe(his) for his in indicator_his[key]])
         cur_details = decision_details[decision_details.freq == key].set_index(["instrument", "datetime"])
         if len(cur_details) > 0:
             cur_details.pop("freq")
-            report[key][1] = report[key][1].join(cur_details, how="outer")
+            cur_his = cur_his.join(cur_details, how="outer")
+
+        report[key] = (cur_dict, cur_his)
 
     return report
 
