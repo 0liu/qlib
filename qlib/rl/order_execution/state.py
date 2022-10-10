@@ -302,7 +302,7 @@ class SAOEMetrics(TypedDict):
 
     stock_id: str
     """Stock ID of this record."""
-    datetime: pd.Timestamp | pd.DatetimeIndex  # TODO: check this
+    datetime: pd.Timestamp | pd.DatetimeIndex
     """Datetime of this record (this is index in the dataframe)."""
     direction: int
     """Direction of the order. 0 for sell, 1 for buy."""

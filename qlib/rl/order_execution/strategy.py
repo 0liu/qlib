@@ -29,7 +29,7 @@ class SAOEStrategy(RLStrategy):
 
     def __init__(
         self,
-        policy: object,  # TODO: add accurate typehint later.
+        policy: BasePolicy,
         outer_trade_decision: BaseTradeDecision = None,
         level_infra: LevelInfrastructure = None,
         common_infra: CommonInfrastructure = None,
@@ -165,7 +165,7 @@ class SAOEIntStrategy(SAOEStrategy):
         policy: dict | BasePolicy,
         state_interpreter: dict | StateInterpreter,
         action_interpreter: dict | ActionInterpreter,
-        network: object = None,  # TODO: add accurate typehint later.
+        network: dict | torch.nn.Module | None = None,
         outer_trade_decision: BaseTradeDecision = None,
         level_infra: LevelInfrastructure = None,
         common_infra: CommonInfrastructure = None,
