@@ -174,6 +174,7 @@ def test_interpreter():
 
     # second step
     simulator.step(5.0)
+    interpreter.step()
     interpreter.env = EmulateEnvWrapper(status=EnvWrapperStatus(cur_step=1, done=False, **wrapper_status_kwargs))
 
     obs = interpreter(simulator.get_state())
@@ -193,15 +194,18 @@ def test_interpreter():
     interpreter_action_twap.env = EmulateEnvWrapper(
         status=EnvWrapperStatus(cur_step=1, done=False, **wrapper_status_kwargs)
     )
+    interpreter_action_twap.step()
     action = interpreter_action_twap(simulator.get_state(), 1.5)
     assert action == 1.5
 
     # fast-forward
     for _ in range(10):
         simulator.step(0.0)
+        interpreter.step()
 
     # last step
     simulator.step(5.0)
+    interpreter.step()
     interpreter.env = EmulateEnvWrapper(
         status=EnvWrapperStatus(cur_step=12, done=simulator.done(), **wrapper_status_kwargs)
     )
@@ -243,6 +247,7 @@ def test_network_sanity():
         assert 0 <= output["act"].item() <= 13
         if i < 13:
             simulator.step(1.0)
+            interpreter.step()
         else:
             assert obs["cur_tick"] == 389
             assert obs["cur_step"] == 12
