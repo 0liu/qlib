@@ -89,7 +89,6 @@ def get_backtest_config_fromfile(path: str) -> dict:
         "min_cost": 5.0,
         "trade_unit": 100.0,
         "cash_limit": None,
-        "generate_report": False,
     }
     backtest_config["exchange"] = merge_a_into_b(a=backtest_config["exchange"], b=exchange_config_default)
     backtest_config["exchange"] = _convert_all_list_to_tuple(backtest_config["exchange"])
@@ -100,7 +99,7 @@ def get_backtest_config_fromfile(path: str) -> dict:
         "concurrency": -1,
         "multiplier": 1.0,
         "output_dir": "outputs/",
-        # "runtime": {},
+        "generate_report": False,
     }
     backtest_config = merge_a_into_b(a=backtest_config, b=backtest_config_default)
 

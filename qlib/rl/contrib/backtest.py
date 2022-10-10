@@ -323,7 +323,7 @@ def backtest(backtest_config: dict, with_simulator: bool = False) -> pd.DataFram
     order_df = read_order_file(backtest_config["order_file"])
 
     cash_limit = backtest_config["exchange"].pop("cash_limit")
-    generate_report = backtest_config["exchange"].pop("generate_report")
+    generate_report = backtest_config.pop("generate_report")
 
     stock_pool = order_df["instrument"].unique().tolist()
     stock_pool.sort()
