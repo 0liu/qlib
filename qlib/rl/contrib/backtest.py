@@ -7,14 +7,14 @@ import copy
 import pickle
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Literal, Optional, Tuple, Union
+from typing import cast, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import torch
 from joblib import delayed, Parallel
 
-from qlib.backtest import collect_data_loop, get_strategy_executor
+from qlib.backtest import collect_data_loop, get_strategy_executor, Indicator
 from qlib.backtest.decision import BaseTradeDecision, Order, OrderDir, TradeRangeByTime
 from qlib.backtest.executor import SimulatorExecutor
 from qlib.backtest.high_performance_ds import BaseOrderIndicator
@@ -82,9 +82,10 @@ def _convert_indicator_to_dataframe(indicator: dict) -> Optional[pd.DataFrame]:
     return records
 
 
-# TODO: there should be richer annotation for the input (e.g. report) and the returned report
-# TODO: For example, @ dataclass with typed fields and detailed docstrings.
-def _generate_report(decisions: List[BaseTradeDecision], report_indicators: List[dict]) -> dict:
+def _generate_report(
+    decisions: List[BaseTradeDecision],
+    report_indicators: List[Dict[str, Tuple[pd.DataFrame, Indicator]]],
+) -> Dict[str, Tuple[pd.DataFrame, pd.DataFrame]]:
     """Generate backtest reports
 
     Parameters
@@ -97,28 +98,26 @@ def _generate_report(decisions: List[BaseTradeDecision], report_indicators: List
     -------
 
     """
-    indicator_dict = defaultdict(list)
-    indicator_his = defaultdict(list)
+    indicator_dict: Dict[str, List[pd.DataFrame]] = defaultdict(list)
+    indicator_his: Dict[str, List[dict]] = defaultdict(list)
+
     for report_indicator in report_indicators:
-        for key, value in report_indicator.items():
-            if key.endswith("_obj"):
-                indicator_his[key].append(value.order_indicator_his)
-            else:
-                indicator_dict[key].append(value)
+        for key, (indicator_df, indicator_obj) in report_indicator.items():
+            indicator_dict[key].append(indicator_df)
+            indicator_his[key].append(indicator_obj.order_indicator_his)
 
     report = {}
     decision_details = pd.concat([getattr(d, "details") for d in decisions if hasattr(d, "details")])
-    for key in ["1min", "5min", "30min", "1day"]:
-        if key not in indicator_dict:
-            continue
-
-        report[key] = pd.concat(indicator_dict[key])
-        report[key + "_obj"] = pd.concat([_convert_indicator_to_dataframe(his) for his in indicator_his[key + "_obj"]])
+    for key in indicator_dict:
+        report[key] = (
+            pd.concat(indicator_dict[key]),
+            pd.concat([_convert_indicator_to_dataframe(his) for his in indicator_his[key]]),
+        )
 
         cur_details = decision_details[decision_details.freq == key].set_index(["instrument", "datetime"])
         if len(cur_details) > 0:
             cur_details.pop("freq")
-            report[key + "_obj"] = report[key + "_obj"].join(cur_details, how="outer")
+            report[key][1] = report[key][1].join(cur_details, how="outer")
 
     return report
 
@@ -202,8 +201,9 @@ def single_with_simulator(
         reports.append(simulator.report_dict)
         decisions += simulator.decisions
 
-    indicator = {k: v for report in reports for k, v in report["indicator"]["1day_obj"].order_indicator_his.items()}
-    records = _convert_indicator_to_dataframe(indicator)
+    indicator_1day_objs = [report["indicator"]["1day"][1] for report in reports]
+    indicator_info = {k: v for obj in indicator_1day_objs for k, v in obj.order_indicator_his.items()}
+    records = _convert_indicator_to_dataframe(indicator_info)
     assert records is None or not np.isnan(records["ffr"]).any()
 
     if generate_report:
@@ -303,11 +303,12 @@ def single_with_collect_data_loop(
     report_dict: dict = {}
     decisions = list(collect_data_loop(trade_start_time, trade_end_time, strategy, executor, report_dict))
 
-    records = _convert_indicator_to_dataframe(report_dict["indicator"]["1day_obj"].order_indicator_his)
+    indicator_dict = cast(Dict[str, Tuple[pd.DataFrame, Indicator]], report_dict.get("indicator_dict"))
+    records = _convert_indicator_to_dataframe(indicator_dict["1day"][1].order_indicator_his)
     assert records is None or not np.isnan(records["ffr"]).any()
 
     if generate_report:
-        report = _generate_report(decisions, [report_dict["indicator"]])
+        report = _generate_report(decisions, [indicator_dict])
         if split == "stock":
             stock_id = orders.iloc[0].instrument
             report = {stock_id: report}
