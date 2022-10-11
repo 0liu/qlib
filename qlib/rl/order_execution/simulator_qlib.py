@@ -12,8 +12,8 @@ from qlib.backtest.decision import BaseTradeDecision, Order, TradeRangeByTime
 from qlib.backtest.executor import NestedExecutor
 from qlib.rl.data.integration import init_qlib
 from qlib.rl.simulator import Simulator
-from .state import SAOEState, SAOEStateAdapter
-from .strategy import SAOEStrategy
+from .state import SAOEState
+from .strategy import SAOEStateAdapter, SAOEStrategy
 
 
 class SingleAssetOrderExecution(Simulator[Order, SAOEState, float]):
